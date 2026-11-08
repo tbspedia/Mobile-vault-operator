@@ -159,7 +159,8 @@ const sandbox = {
                 get: () => class {}
             });
         }
-        throw new Error(`Cannot find module '${moduleName}' (simulated mobile WebView)`);
+        // Real Obsidian Mobile require() returns undefined for unknown modules instead of throwing
+        return undefined;
     }
 };
 

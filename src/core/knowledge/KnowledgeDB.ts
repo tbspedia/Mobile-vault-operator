@@ -297,6 +297,15 @@ export class KnowledgeDB {
 
         const basePath = (vault.adapter as unknown as { getBasePath?(): string }).getBasePath?.() ?? '';
 
+        // @fork-mobile-start [Phase: 2, Issue: MobileGlobalDbUsesVaultAdapter]
+        if (!Platform.isDesktopApp && storageLocation === 'global') {
+            this.storageLocation = 'local';
+            const mobileDir = globalRoot || vaultRelativeDir || '.vault-operator/data';
+            this.vaultRelativePath = `${mobileDir}/${dbName}`;
+            this.absolutePath = this.vaultRelativePath;
+            return;
+        }
+        // @fork-mobile-end
         if (storageLocation === 'global') {
             const root = globalRoot ?? PlatformPath.join(PlatformPath.dirname(basePath), '.obsidian-agent');
             this.absolutePath = PlatformPath.join(root, dbName);

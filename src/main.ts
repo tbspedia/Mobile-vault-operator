@@ -2537,7 +2537,9 @@ export default class ObsidianAgentPlugin extends Plugin {
             if (this.historyDB && this.historyDB.getStorageLocation() !== 'obsidian-sync') {
                 targets.push({ name: 'history', sourcePath: this.historyDB.getAbsolutePath() });
             }
-            if (targets.length > 0) {
+            // @fork-mobile-start [Phase: 1, Issue: SnapshotJobDesktopOnly]
+            if (Platform.isDesktopApp && targets.length > 0) {
+            // @fork-mobile-end
                 this.snapshotTargets = targets;
                 // Run in background; never block plugin startup on snapshot I/O.
                 void this.snapshotJob.runDailySnapshot(targets)

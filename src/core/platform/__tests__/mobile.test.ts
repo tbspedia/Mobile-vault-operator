@@ -112,7 +112,8 @@ describe('Mobile Bundle Evaluation Simulation', () => {
             require: (id: string) => {
                 if (id === 'obsidian') return mockObsidian;
                 if (id.startsWith('@codemirror/') || id.startsWith('@lezer/')) return new Proxy({}, { get: () => class {} });
-                throw new Error(`Cannot find module '${id}' (simulated mobile WebView)`);
+                // Obsidian Mobile app.js require() returns undefined for non-built-in modules without throwing
+                return undefined;
             }
         };
         sandbox.window = sandbox;
