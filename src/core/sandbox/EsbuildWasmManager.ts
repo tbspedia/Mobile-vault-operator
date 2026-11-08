@@ -26,13 +26,28 @@
  * Part of Self-Development Phase 3: Sandbox + Dynamic Modules.
  */
 
-import { Notice, requestUrl } from 'obsidian';
+import { Notice, requestUrl, Platform } from 'obsidian';
 import type ObsidianAgentPlugin from '../../main';
 // The cache lives outside the vault, so vault.adapter is not an option. Same
 // pattern as GitCheckpointService. Desktop-only; the entire plugin is
 // isDesktopOnly:true.
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- see comment above
-const rawFs = require('fs') as typeof import('fs');
+// @fork-mobile-start [Phase: 1, Issue: LazyFsEsbuildWasmManager]
+let rawFsInstance: typeof import('fs') | null = null;
+function getFs(): typeof import('fs') {
+    if (!rawFsInstance) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        rawFsInstance = require('fs') as typeof import('fs');
+    }
+    return rawFsInstance;
+}
+// Proxy object so existing rawFs.promises calls continue working without altering call-sites
+const rawFs = new Proxy({} as typeof import('fs'), {
+    get(_target, prop) {
+        return (getFs() as unknown as Record<string | symbol, unknown>)[prop];
+    },
+});
+// @fork-mobile-end
 import * as pathModule from 'path';
 
 // ---------------------------------------------------------------------------
@@ -125,6 +140,11 @@ export class EsbuildWasmManager {
      * Downloads JS (~150KB) + WASM (~11MB) from CDN on first use.
      */
     async ensureReady(): Promise<void> {
+        // @fork-mobile-start [Phase: 1, Issue: EsbuildWasmMobileGuard]
+        if (!Platform.isDesktopApp) {
+            throw new Error('esbuild-wasm on-demand compilation is not supported on mobile.');
+        }
+        // @fork-mobile-end
         if (this.esbuild) return;
         if (this.initializing) {
             while (this.initializing) {

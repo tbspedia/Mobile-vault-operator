@@ -17,8 +17,11 @@
  * FEATURE-1500: SQLite Knowledge DB
  */
 
-import type { Vault } from 'obsidian';
-import { gunzipSync } from 'node:zlib';
+import { Platform, type Vault } from 'obsidian';
+// @fork-mobile-start [Phase: 1, Issue: PlatformImportsKnowledgeDB]
+import { PlatformPath } from '../platform/PlatformPath';
+import { base64ToUint8Array, decompressGzip } from '../platform/PlatformCompression';
+// @fork-mobile-end
 import * as path from 'path';
 import * as fs from '../security/safeFs';
 import { WriterLock, WriterLockHeldError } from '../persistence/WriterLock';
@@ -295,15 +298,15 @@ export class KnowledgeDB {
         const basePath = (vault.adapter as unknown as { getBasePath?(): string }).getBasePath?.() ?? '';
 
         if (storageLocation === 'global') {
-            const root = globalRoot ?? path.join(path.dirname(basePath), '.obsidian-agent');
-            this.absolutePath = path.join(root, dbName);
+            const root = globalRoot ?? PlatformPath.join(PlatformPath.dirname(basePath), '.obsidian-agent');
+            this.absolutePath = PlatformPath.join(root, dbName);
             this.vaultRelativePath = ''; // not used for global
         } else if (storageLocation === 'local') {
             this.vaultRelativePath = `${vaultRelativeDir}/${dbName}`;
-            this.absolutePath = path.join(basePath, this.vaultRelativePath);
+            this.absolutePath = basePath ? PlatformPath.join(basePath, this.vaultRelativePath) : this.vaultRelativePath;
         } else {
             this.vaultRelativePath = `${pluginDir}/${dbName}`;
-            this.absolutePath = path.join(basePath, this.vaultRelativePath);
+            this.absolutePath = basePath ? PlatformPath.join(basePath, this.vaultRelativePath) : this.vaultRelativePath;
         }
     }
 
@@ -314,8 +317,8 @@ export class KnowledgeDB {
         // BUG-029: WriterLock for Setup-Klasse B (obsidian-sync). Same-host
         // duplicate instances are blocked here; cross-host (other device on
         // same Sync-Vault) is advisory only because PIDs are not portable.
-        if (this.storageLocation === 'obsidian-sync') {
-            this.writerLock = new WriterLock(path.dirname(this.absolutePath));
+        if (Platform.isDesktopApp && this.storageLocation === 'obsidian-sync') {
+            this.writerLock = new WriterLock(PlatformPath.dirname(this.absolutePath));
             const result = await this.writerLock.acquire();
             if (!result.acquired) {
                 this.writerLock = null;
@@ -342,7 +345,7 @@ export class KnowledgeDB {
             // Issue #32: sql.js holds the whole file resident in memory (no
             // paging). Warn when a database has grown large enough to slow
             // startup and queries so the user can rebuild / prune the index.
-            const sizeWarn = dbSizeWarning(data.byteLength, path.basename(this.absolutePath));
+            const sizeWarn = dbSizeWarning(data.byteLength, PlatformPath.basename(this.absolutePath));
             if (sizeWarn) console.warn(sizeWarn);
             if (await this.tryLoadWithIntegrityCheck(data)) return;
 
@@ -380,7 +383,10 @@ export class KnowledgeDB {
      */
     private async loadWasmBinary(): Promise<ArrayBuffer> {
         const mod = await import('../../_generated/bundled-wasm') as { SQL_WASM_BASE64: string };
-        const bytes = gunzipSync(Buffer.from(mod.SQL_WASM_BASE64, 'base64'));
+        // @fork-mobile-start [Phase: 2, Issue: WebDecompressionWasm]
+        const compressed = base64ToUint8Array(mod.SQL_WASM_BASE64);
+        const bytes = await decompressGzip(compressed);
+        // @fork-mobile-end
         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     }
 

@@ -7,6 +7,7 @@
  */
 
 import OpenAI from 'openai';
+import { Platform } from 'obsidian';
 import type { LLMProvider } from '../../types/settings';
 import type { ApiHandler, ApiStream, ApiStreamChunk, MessageParam, ModelInfo } from '../types';
 import type { ToolDefinition } from '../../core/tools/types';
@@ -67,6 +68,11 @@ const effortSuppressionNotified = new Set<string>();
  * local dev servers also work, not just HTTPS endpoints.
  */
 export function createNodeFetch(): typeof window.fetch {
+    // @fork-mobile-start [Phase: 4, Issue: MobileWindowFetchFallback]
+    if (!Platform.isDesktopApp) {
+        return (input, init) => window.fetch(input, init);
+    }
+    // @fork-mobile-end
     return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
         const parsed = new URL(url);

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- File-level disable: interacts with external SDK / JSON / Obsidian internals where untyped 'any' values are unavoidable. Inputs are validated at boundaries via type guards or schema checks where security-relevant. */
 import { Plugin, WorkspaceLeaf, Notice, TFile, TFolder, addIcon, Platform, MarkdownView, normalizePath } from 'obsidian';
+import { PlatformPath } from './core/platform';
 import { formatHotkeyHint, formatSendSelectionToSidebarHotkeyHint } from './core/inline/HotkeyHint';
 import { preWarmProviderConnection } from './api/warmup';
 import { scheduleRecurring } from './util/scheduleRecurring';
@@ -218,7 +219,7 @@ export default class ObsidianAgentPlugin extends Plugin {
     approvalRevocationEpoch = 0;
     ignoreService: IgnoreService;
     operationLogger: OperationLogger;
-    checkpointService: GitCheckpointService;
+    checkpointService?: GitCheckpointService;
     rulesLoader: RulesLoader;
     workflowLoader: WorkflowLoader;
     skillsManager: SkillsManager;
@@ -619,11 +620,20 @@ export default class ObsidianAgentPlugin extends Plugin {
         // the five categories of paths the plugin is allowed to touch. See
         // REVIEWER_NOTES.md for the threat model and FEAT-28-01 for the spec.
         // eslint-disable-next-line @typescript-eslint/no-require-imports -- one-time path/os import for safeFs allowlist construction; the rest of the plugin uses safeFs and not direct fs
-        const nodePath = require('path') as typeof import('path');
+        // @fork-mobile-start [Phase: 1, Issue: SafeFsInitializationDesktopOnly]
+        let homeDir = '';
+        let vaultParent = '';
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- desktop uses Node path, mobile uses PlatformPath
+        const nodePath: typeof import('path') = Platform.isDesktopApp
+            // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require on desktop
+            ? (require('path') as typeof import('path'))
+            : (PlatformPath as unknown as typeof import('path'));
+        if (Platform.isDesktopApp) {
+
         // eslint-disable-next-line @typescript-eslint/no-require-imports -- one-time os import for safeFs allowlist construction
         const nodeOs = require('os') as typeof import('os');
         const safeFsVaultRoot = (this.app.vault.adapter as unknown as { getBasePath?(): string }).getBasePath?.() ?? '';
-        const homeDir = nodeOs.homedir();
+            homeDir = nodeOs.homedir();
         const appData = process.env.APPDATA ?? '';
         const desktopConfigDirs = [
             nodePath.join(homeDir, '.config', 'Claude'),
@@ -637,7 +647,7 @@ export default class ObsidianAgentPlugin extends Plugin {
         // wrapper can validate against. Use the home dir as a coarse fallback;
         // the plugin is desktop-only so this path is rare.
         const effectiveVaultRoot = safeFsVaultRoot || homeDir;
-        const vaultParent = safeFsVaultRoot ? nodePath.dirname(safeFsVaultRoot) : homeDir;
+            vaultParent = safeFsVaultRoot ? nodePath.dirname(safeFsVaultRoot) : homeDir;
         safeFs.initialize({
             vaultRoot: effectiveVaultRoot,
             pluginDataDir: nodePath.join(effectiveVaultRoot, this.app.vault.configDir, 'plugins', this.manifest.id),
@@ -653,6 +663,10 @@ export default class ObsidianAgentPlugin extends Plugin {
                 nodePath.join(vaultParent, '.obsidian-agent'),
             ],
         });
+        }
+        // @fork-mobile-end
+
+
 
         // 0-pre. Rebrand migration: the plugin id changed from `obsilo-agent` to
         // `vault-operator` (the Obsidian community-plugin review bot rejects any
@@ -716,6 +730,8 @@ export default class ObsidianAgentPlugin extends Plugin {
             savedLayoutMigrationStatus = typeof rawSaved?._layoutMigrationStatus === 'string'
                 ? rawSaved._layoutMigrationStatus
                 : undefined;
+            // @fork-mobile-start [Phase: 1, Issue: LegacyFolderMigrationDesktopOnly]
+            if (Platform.isDesktopApp) {
             const { migrateFolderRename } = await import('./core/utils/migrateFolderRename');
             const renameReport = await migrateFolderRename(this.app, vaultBasePath, savedFolderPath);
             if (renameReport.vaultLocalRenamed || renameReport.globalRenamed) {
@@ -799,6 +815,11 @@ export default class ObsidianAgentPlugin extends Plugin {
                     }
                 }
             }
+            } else {
+                if (!savedFolderPath) savedFolderPath = '.vault-operator';
+                savedLayoutMigrationStatus = 'complete';
+            }
+            // @fork-mobile-end
         } catch (e) {
             console.warn('[Plugin] Folder rename migration failed (non-fatal):', e);
         }
@@ -810,7 +831,7 @@ export default class ObsidianAgentPlugin extends Plugin {
         const layoutHint = (savedFolderPath && savedLayoutMigrationStatus === 'complete')
             ? { agentFolderPath: savedFolderPath, layoutMigrationStatus: 'complete' as const }
             : undefined;
-        this.globalFs = new GlobalFileService(vaultBasePath, layoutHint);
+        this.globalFs = new GlobalFileService(vaultBasePath, layoutHint, this.app.vault.adapter);
         this.globalSettingsService = new GlobalSettingsService(this.globalFs, this.safeStorage);
         // Share the GlobalFileService with GlobalModeStore (consolidates all global I/O)
         setGlobalModeStoreFs(this.globalFs);
@@ -851,10 +872,15 @@ export default class ObsidianAgentPlugin extends Plugin {
         //         carries the long-form explanation; this toast only fires
         //         once per session and is suppressed entirely once the user
         //         dismissed the banner (acknowledged flag in settings).
+        // @fork-mobile-start [Phase: 1, Issue: SafeStorageToastDesktopOnly]
+        if (Platform.isDesktopApp) {
         this.safeStorage.notifyPlaintextFallbackOnce(
             Notice,
             this.settings.safeStoragePlaintextFallbackAcknowledged === true,
         );
+        }
+        // @fork-mobile-end
+
 
         // 1a-orphan. FIX-19-01-12 -- drop the legacy `Inbox/Orphans/` exclude
         //     prefix. It only ever made sense together with the orphan
@@ -1151,64 +1177,61 @@ export default class ObsidianAgentPlugin extends Plugin {
         let checkpointsAbsPath = `${pluginDataRoot}/checkpoints`;
         let devEnvAbsPath = `${pluginDataRoot}/dev-env`;
 
-        // FEATURE-1508: One-time migration from ~/.obsidian-agent/ to {vault-parent}/.obsidian-agent/
-        if (!this.settings._parentDirMigrated) {
-            await this.migrateToParentDir(vaultBasePath).catch((e) =>
-                console.warn('[Plugin] Storage migration failed (non-fatal):', e)
-            );
-            this.settings._parentDirMigrated = true;
-            await this.saveData({ ...this.settings, _parentDirMigrated: true });
-        }
-
-        // 2026-05-19: Move large internal caches OUT of the vault. iCloud and
-        // Obsidian Sync used to replicate <vault>/.obsidian/plugins/<id>/checkpoints
-        // (often 100+ MB across thousands of git-object files) and dev-env/
-        // (11 MB esbuild WASM) to every device, which stalled mobile startups.
-        // Both now live next to GlobalFileService's root, outside the vault.
-        // Idempotent and best-effort; failures degrade to a no-op.
-        if (!this.settings._pluginDataDirsMigrated) {
-            try {
-                const { planPluginDataMigration, migratePluginDataDirs } =
-                    await import('./core/utils/migratePluginDataDirs');
-                const targets = planPluginDataMigration(
-                    vaultBasePath,
-                    this.app.vault.configDir,
-                    this.manifest.id,
-                    pluginDataRoot,
+        // @fork-mobile-start [Phase: 1, Issue: StorageMigrationsDesktopOnly]
+        if (Platform.isDesktopApp) {
+            // FEATURE-1508: One-time migration from ~/.obsidian-agent/ to {vault-parent}/.obsidian-agent/
+            if (!this.settings._parentDirMigrated) {
+                await this.migrateToParentDir(vaultBasePath).catch((e) =>
+                    console.warn('[Plugin] Storage migration failed (non-fatal):', e)
                 );
-                const report = await migratePluginDataDirs(targets);
-                if (report.migrated > 0) {
-                    console.debug('[Plugin] Moved plugin data dirs out of vault:', report);
-                    new Notice(
-                        t('notice.migration.cachesMoved', { count: report.migrated }),
-                        6000,
-                    );
-                }
-                const failed = report.entries.filter((e) => e.status === 'failed');
-                if (failed.length > 0) {
-                    console.warn('[Plugin] Plugin data dir migration partial failures:', failed);
-                }
-            } catch (e) {
-                console.warn('[Plugin] Plugin data dir migration failed (non-fatal):', e);
+                this.settings._parentDirMigrated = true;
+                await this.saveData({ ...this.settings, _parentDirMigrated: true });
             }
-            this.settings._pluginDataDirsMigrated = true;
-            await this.saveSettings();
-        }
 
-        // Legacy in-vault folder cleanup. Pre-FEATURE-1508 the plugin
-        // experimented with .obsilo / .obsilo-sync / .obsidian/.obsilo
-        // names. cleanupLegacyVaultDirs() handled them but only ran via
-        // the migrateToParentDir branch when ~/.obsidian-agent had already
-        // disappeared. For users where the legacy ~/.obsidian-agent still
-        // exists alongside, that branch never fired. Run it directly,
-        // gated by an idempotent flag.
-        if (!this.settings._legacyVaultDirsCleaned) {
-            await this.cleanupLegacyVaultDirs().catch((e) =>
-                console.warn('[Plugin] Legacy vault dir cleanup failed (non-fatal):', e)
-            );
+            // 2026-05-19: Move large internal caches OUT of the vault.
+            if (!this.settings._pluginDataDirsMigrated) {
+                try {
+                    const { planPluginDataMigration, migratePluginDataDirs } =
+                        await import('./core/utils/migratePluginDataDirs');
+                    const targets = planPluginDataMigration(
+                        vaultBasePath,
+                        this.app.vault.configDir,
+                        this.manifest.id,
+                        pluginDataRoot,
+                    );
+                    const report = await migratePluginDataDirs(targets);
+                    if (report.migrated > 0) {
+                        console.debug('[Plugin] Moved plugin data dirs out of vault:', report);
+                        new Notice(
+                            t('notice.migration.cachesMoved', { count: report.migrated }),
+                            6000,
+                        );
+                    }
+                    const failed = report.entries.filter((e) => e.status === 'failed');
+                    if (failed.length > 0) {
+                        console.warn('[Plugin] Plugin data dir migration partial failures:', failed);
+                    }
+                } catch (e) {
+                    console.warn('[Plugin] Plugin data dir migration failed (non-fatal):', e);
+                }
+                this.settings._pluginDataDirsMigrated = true;
+                await this.saveSettings();
+            }
+
+            // Legacy in-vault folder cleanup.
+            if (!this.settings._legacyVaultDirsCleaned) {
+                await this.cleanupLegacyVaultDirs().catch((e) =>
+                    console.warn('[Plugin] Legacy vault dir cleanup failed (non-fatal):', e)
+                );
+                this.settings._legacyVaultDirsCleaned = true;
+                await this.saveSettings();
+            }
+        } else {
+            this.settings._parentDirMigrated = true;
+            this.settings._pluginDataDirsMigrated = true;
             this.settings._legacyVaultDirsCleaned = true;
-            await this.saveSettings();
         }
+        // @fork-mobile-end
 
         // FEAT-29-01: Consolidate all plugin storage under {vault}/.vault-operator/
         // {data,cache}. Replaces the four legacy roots .obsidian-agent,
@@ -1222,7 +1245,9 @@ export default class ObsidianAgentPlugin extends Plugin {
         // user has explicitly set _layoutMigrationOptIn=true in data.json or
         // via the Settings restore-action (PLAN-27 Task 5). Until then the
         // migration service ships but stays dormant.
-        if (this.settings._layoutMigrationOptIn === true
+        // @fork-mobile-start [Phase: 1, Issue: LayoutMigrationDesktopOnly]
+        if (Platform.isDesktopApp
+            && this.settings._layoutMigrationOptIn === true
             && this.settings._layoutMigrationStatus !== 'complete') {
             // Backup destination MUST be outside every migration source folder
             // (recursive self-copy bug -- 14 GB ENAMETOOLONG explosion observed
@@ -1358,20 +1383,23 @@ export default class ObsidianAgentPlugin extends Plugin {
             });
         }
 
+        // @fork-mobile-end
+
         // FEAT-29-01: ensure GlobalFileService points at the consolidated
         // vault-local layout on every reload after migration completed (not
         // just the boot that ran the migration). Idempotent.
-        if (this.settings._layoutMigrationStatus === 'complete') {
+        // @fork-mobile-start [Phase: 1, Issue: ConsolidatedDataRootMobile]
+        if (this.settings._layoutMigrationStatus === 'complete' || !Platform.isDesktopApp) {
             this.globalFs.useVaultLocalRoot(this.settings.agentFolderPath ?? '.vault-operator');
-            // Recompute the cache-side absolute paths so GitCheckpointService
-            // and EsbuildWasmManager (instantiated further down) read from the
-            // consolidated cache folder rather than the legacy vault-parent
-            // location. The migration physically moved both folders in
-            // phase 5; without this recompute the services would point at
-            // empty legacy paths.
-            const cacheRoot = `${vaultBasePath}/${this.settings.agentFolderPath ?? '.vault-operator'}/cache`;
-            checkpointsAbsPath = `${cacheRoot}/checkpoints`;
-            devEnvAbsPath = `${cacheRoot}/dev-env`;
+            if (Platform.isDesktopApp) {
+                // Recompute the cache-side absolute paths so GitCheckpointService
+                // and EsbuildWasmManager (instantiated further down) read from the
+                // consolidated cache folder rather than the legacy vault-parent
+                // location.
+                const cacheRoot = `${vaultBasePath}/${this.settings.agentFolderPath ?? '.vault-operator'}/cache`;
+                checkpointsAbsPath = `${cacheRoot}/checkpoints`;
+                devEnvAbsPath = `${cacheRoot}/dev-env`;
+            }
 
             // One-shot notice for users who had chatHistoryFolder configured
             // before the setting was removed. Defers to after layout-ready so
@@ -1392,6 +1420,8 @@ export default class ObsidianAgentPlugin extends Plugin {
                 });
             }
         }
+
+        // @fork-mobile-end
 
         // Governance: ignore/protected path rules. FIX-44-24: pass the agent
         // folder root so its config zone (settings, mcp config, provenance
@@ -1465,18 +1495,22 @@ export default class ObsidianAgentPlugin extends Plugin {
         // Checkpoints (isomorphic-git shadow repo).
         // Lives outside the vault (see migratePluginDataDirs.ts) to keep
         // iCloud / Obsidian Sync from replicating 100+ MB of git objects.
-        this.checkpointService = new GitCheckpointService(
-            this.app,
-            this.app.vault,
-            checkpointsAbsPath,
-            this.settings.checkpointTimeoutSeconds,
-            this.settings.checkpointAutoCleanup,
-        );
-        if (this.settings.enableCheckpoints) {
-            await this.checkpointService.initialize().catch((e) =>
-                console.warn('[Plugin] Checkpoint service init failed (non-fatal):', e)
+        // @fork-mobile-start [Phase: 1, Issue: CheckpointServiceDesktopOnly]
+        if (Platform.isDesktopApp) {
+            this.checkpointService = new GitCheckpointService(
+                this.app,
+                this.app.vault,
+                checkpointsAbsPath,
+                this.settings.checkpointTimeoutSeconds,
+                this.settings.checkpointAutoCleanup,
             );
+            if (this.settings.enableCheckpoints) {
+                await this.checkpointService.initialize().catch((e) =>
+                    console.warn('[Plugin] Checkpoint service init failed (non-fatal):', e)
+                );
+            }
         }
+        // @fork-mobile-end
 
         // MCP Client — connect to all configured servers.
         // AUDIT-034 M-14: the SSRF guard runs inside McpClient.connect() and
@@ -1515,11 +1549,13 @@ export default class ObsidianAgentPlugin extends Plugin {
         // merge them in so the boot connect covers both transports.
         const stdioServers = this.deviceLocalStore?.listStdioServers() ?? {};
         const allMcpServers = { ...(this.settings.mcpServers ?? {}), ...stdioServers };
-        if (Object.keys(allMcpServers).length > 0) {
+        // @fork-mobile-start [Phase: 1, Issue: McpClientDesktopOnly]
+        if (Platform.isDesktopApp && Object.keys(allMcpServers).length > 0) {
             this.mcpClient.connectAll(allMcpServers).catch((e) =>
                 console.warn('[Plugin] MCP connect failed (non-fatal):', e)
             );
         }
+        // @fork-mobile-end
 
         // Sandbox + Dynamic Modules (Phase 3) — lazy initialization (ADR-021: OS-level isolation).
         // esbuild WASM cache lives outside the vault (see migratePluginDataDirs.ts).
@@ -1535,10 +1571,14 @@ export default class ObsidianAgentPlugin extends Plugin {
         // Core Self-Modification (Phase 4) -- source bundle is an
         // optional download (Phase 2.2). load() is fire-and-forget:
         // first manage_source call awaits it via ensureLoaded.
+        // @fork-mobile-start [Phase: 1, Issue: EmbeddedSourceManagerDesktopOnly]
         this.embeddedSourceManager = new EmbeddedSourceManager(this);
-        void this.embeddedSourceManager.load().catch((e) =>
-            console.debug('[Plugin] Source bundle load deferred:', e),
-        );
+        if (Platform.isDesktopApp) {
+            void this.embeddedSourceManager.load().catch((e) =>
+                console.debug('[Plugin] Source bundle load deferred:', e),
+            );
+        }
+        // @fork-mobile-end
         this.pluginBuilder = new PluginBuilder(this.esbuildWasmManager, this.embeddedSourceManager);
         this.pluginReloader = new PluginReloader(this);
 
@@ -1857,25 +1897,29 @@ export default class ObsidianAgentPlugin extends Plugin {
                 (texts) => semanticIndexRef.embedTexts(texts),
                 () => semanticIndexRef.getEmbeddingModelInfo(),
             ));
-            // Auto-index on startup if configured
-            if (this.settings.semanticAutoIndex === 'startup') {
-                // buildIndex() auto-triggers enrichment after completion
-                this.semanticIndex.buildIndex().catch((e) =>
-                    console.warn('[Plugin] Auto-index on startup failed:', e)
-                );
-            } else if (
-                this.semanticIndex.isIndexed &&
-                this.settings.enableContextualRetrieval &&
-                this.getContextualModel() &&
-                this.vectorStore
-            ) {
-                // No build needed, but check for unenriched chunks from a previous session
-                const unenriched = this.vectorStore.getUnenrichedCount();
-                if (unenriched > 0) {
-                    console.debug(`[Plugin] ${unenriched} unenriched chunks found — starting background enrichment`);
-                    void this.semanticIndex.runBackgroundEnrichment();
+            // @fork-mobile-start [Phase: 2, Issue: AutoIndexDesktopOnly]
+            if (Platform.isDesktopApp) {
+                // Auto-index on startup if configured
+                if (this.settings.semanticAutoIndex === 'startup') {
+                    // buildIndex() auto-triggers enrichment after completion
+                    this.semanticIndex.buildIndex().catch((e) =>
+                        console.warn('[Plugin] Auto-index on startup failed:', e)
+                    );
+                } else if (
+                    this.semanticIndex.isIndexed &&
+                    this.settings.enableContextualRetrieval &&
+                    this.getContextualModel() &&
+                    this.vectorStore
+                ) {
+                    // No build needed, but check for unenriched chunks from a previous session
+                    const unenriched = this.vectorStore.getUnenrichedCount();
+                    if (unenriched > 0) {
+                        console.debug(`[Plugin] ${unenriched} unenriched chunks found — starting background enrichment`);
+                        void this.semanticIndex.runBackgroundEnrichment();
+                    }
                 }
             }
+            // @fork-mobile-end
 
             // Graph Extraction (FEATURE-1502): extract Wikilinks, MOC-Properties, Tags
             if (this.settings.enableGraphExpansion && this.graphStore) {
@@ -1891,9 +1935,13 @@ export default class ObsidianAgentPlugin extends Plugin {
                 // async (selektiver Read nur fuer Notizen mit HTML-Kommentar,
                 // um Block-Kanten zu klassifizieren); der Normalfall bleibt
                 // read-frei.
-                this.enqueueBootJob('graph extraction', () =>
-                    this.graphExtractor?.extractAll(this.app.vault)
-                        .catch((e) => console.warn('[Plugin] boot extractAll failed:', e)));
+                // @fork-mobile-start [Phase: 2, Issue: GraphExtractionBootDesktopOnly]
+                if (Platform.isDesktopApp) {
+                    this.enqueueBootJob('graph extraction', () =>
+                        this.graphExtractor?.extractAll(this.app.vault)
+                            .catch((e) => console.warn('[Plugin] boot extractAll failed:', e)));
+                }
+                // @fork-mobile-end
 
                 // IMP-06-01-01 hint: PDF embeddings created before v2.14.10
                 // carry a placeholder string. Show the hint exactly once
@@ -2333,11 +2381,13 @@ export default class ObsidianAgentPlugin extends Plugin {
         //       Gated on settings.semanticAutoIndexOnChange because users
         //       opt out for cost reasons.
         if (this.knowledgeDB && this.vaultRenameHandler) {
-            const autoIndex = !!(
+            // @fork-mobile-start [Phase: 2, Issue: AutoIndexDesktopOnly]
+            const autoIndex = Platform.isDesktopApp && !!(
                 this.settings.enableSemanticIndex
                 && this.semanticIndex
                 && this.settings.semanticAutoIndexOnChange
             );
+            // @fork-mobile-end
 
             const DOCUMENT_EXTENSIONS = new Set(['pdf', 'pptx', 'xlsx', 'docx']);
             const isIndexable = (f: TFile): boolean =>
@@ -5096,6 +5146,10 @@ export default class ObsidianAgentPlugin extends Plugin {
             .getBasePath?.() ?? '';
         if (!basePath) return;
         // eslint-disable-next-line @typescript-eslint/no-require-imports -- same one-off path import the boot path uses; the plugin otherwise goes through safeFs
+        // @fork-mobile-start [Phase: 1, Issue: StorageUpgradeModalDesktopOnly]
+        if (!Platform.isDesktopApp) return;
+        // @fork-mobile-end
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- path is desktop only
         const nodePath = require('path') as typeof import('path');
         const vaultParent = nodePath.dirname(basePath);
 
@@ -5408,6 +5462,9 @@ export default class ObsidianAgentPlugin extends Plugin {
      * and knowledge.db to {vault}/.obsidian-agent/. One-time, idempotent.
      */
     private async migrateToParentDir(vaultBasePath: string): Promise<void> {
+        // @fork-mobile-start [Phase: 1, Issue: StorageMigrationDesktopOnly]
+        if (!Platform.isDesktopApp) return;
+        // @fork-mobile-end
         // eslint-disable-next-line @typescript-eslint/no-require-imports -- path/os are pure helpers, no fs surface
         const path = require('path') as typeof import('path');
         // eslint-disable-next-line @typescript-eslint/no-require-imports -- path/os are pure helpers
@@ -5520,6 +5577,9 @@ export default class ObsidianAgentPlugin extends Plugin {
     }
 
     private scheduleFileIndex(filePath: string): void {
+        // @fork-mobile-start [Phase: 2, Issue: SemanticIndexDesktopOnly]
+        if (!Platform.isDesktopApp) return;
+        // @fork-mobile-end
         if (!this.semanticIndex?.isIndexed) return;
         if (this.settings.semanticExcludedFolders?.some((f) => filePath.startsWith(f + '/'))) return;
         const existing = this.autoIndexDebounceTimers.get(filePath);

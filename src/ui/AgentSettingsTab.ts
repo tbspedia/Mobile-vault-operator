@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, setIcon } from 'obsidian';
+import { App, PluginSettingTab, setIcon, Platform } from 'obsidian';
 import type ObsidianAgentPlugin from '../main';
 import { t } from '../i18n';
 
@@ -296,14 +296,16 @@ export class AgentSettingsTab extends PluginSettingTab {
         // FEAT-30-07: Recipes ziehen aus dem Shell-Tab hierher, neben
         // Rules und Workflows (alle drei sind vom Nutzer verwaltete
         // Bausteine; der Recipes-Tab erklaert die Abgrenzung).
+        // @fork-mobile-start [Phase: 3, Issue: MobileSettingsSubtabs]
         const subTabs = [
             { id: 'skills',     label: t('settings.tab.skills')     },
-            { id: 'connectors', label: t('settings.tab.connectors') },
+            ...(Platform.isDesktopApp ? [{ id: 'connectors', label: t('settings.tab.connectors') }] : []),
             { id: 'prompts',    label: t('settings.tab.prompts')    },
             { id: 'workflows',  label: t('settings.tab.workflows')  },
             { id: 'rules',      label: t('settings.tab.rules')      },
-            { id: 'recipes',    label: t('settings.tab.recipes')    },
+            ...(Platform.isDesktopApp ? [{ id: 'recipes',    label: t('settings.tab.recipes') }] : []),
         ];
+        // @fork-mobile-end
         this.activeCustomizeSubTab = this.resolveActiveSubTab(subTabs, this.activeCustomizeSubTab);
         this.buildSubTabNav(container, subTabs, this.activeCustomizeSubTab,
             (id) => { this.activeCustomizeSubTab = id; this.redraw(); });
@@ -326,13 +328,15 @@ export class AgentSettingsTab extends PluginSettingTab {
     // ---------------------------------------------------------------------------
 
     private buildAdvancedTab(container: HTMLElement): void {
+        // @fork-mobile-start [Phase: 3, Issue: MobileSettingsSubtabs]
         const subTabs = [
             { id: 'interface', label: t('settings.tab.interface') },
             { id: 'vault',     label: t('settings.tab.vault')     },
-            { id: 'plugin-api', label: t('settings.tab.pluginApi') },
+            ...(Platform.isDesktopApp ? [{ id: 'plugin-api', label: t('settings.tab.pluginApi') }] : []),
             { id: 'data',      label: t('settings.tab.dataDiagnostics') },
-            { id: 'optional-assets', label: t('settings.tab.optionalAssets') },
+            ...(Platform.isDesktopApp ? [{ id: 'optional-assets', label: t('settings.tab.optionalAssets') }] : []),
         ];
+        // @fork-mobile-end
         this.activeAdvancedSubTab = this.resolveActiveSubTab(subTabs, this.activeAdvancedSubTab);
         this.buildSubTabNav(
             container,

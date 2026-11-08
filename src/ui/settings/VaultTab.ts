@@ -1,4 +1,4 @@
-import { App, Notice, Setting } from 'obsidian';
+import { App, Notice, Setting, Platform } from 'obsidian';
 import type ObsidianAgentPlugin from '../../main';
 import { DEFAULT_AGENT_FOLDER } from '../../core/utils/agentFolder';
 import { castGenerated } from '../../core/utils/runtime';
@@ -21,43 +21,47 @@ export class VaultTab {
     constructor(private plugin: ObsidianAgentPlugin, private app: App, private rerender: () => void) {}
 
     build(containerEl: HTMLElement): void {
-        addSectionHeading(
-            containerEl,
-            t('settings.vault.headingCheckpoints'),
-            { body: t('settings.vault.sectionCheckpointsInfo') },
-        );
-
-        new Setting(containerEl)
-            .setName(t('settings.vault.enableCheckpoints'))
-            .setDesc(t('settings.vault.enableCheckpointsDesc'))
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.enableCheckpoints ?? true).onChange(async (v) => {
-                    this.plugin.settings.enableCheckpoints = v;
-                    await this.plugin.saveSettings();
-                }),
+        // @fork-mobile-start [Phase: 3, Issue: CheckpointsSettingsDesktopOnly]
+        if (Platform.isDesktopApp) {
+            addSectionHeading(
+                containerEl,
+                t('settings.vault.headingCheckpoints'),
+                { body: t('settings.vault.sectionCheckpointsInfo') },
             );
 
-        const timeoutSetting = new Setting(containerEl)
-            .setName(t('settings.vault.snapshotTimeout'))
-            .setDesc(t('settings.vault.snapshotTimeoutDesc'));
-        addSliderInput(timeoutSetting, {
-            min: 5, max: 120, step: 5,
-            value: this.plugin.settings.checkpointTimeoutSeconds ?? 30,
-            onChange: async (v) => {
-                this.plugin.settings.checkpointTimeoutSeconds = v;
-                await this.plugin.saveSettings();
-            },
-        });
+            new Setting(containerEl)
+                .setName(t('settings.vault.enableCheckpoints'))
+                .setDesc(t('settings.vault.enableCheckpointsDesc'))
+                .addToggle((t) =>
+                    t.setValue(this.plugin.settings.enableCheckpoints ?? true).onChange(async (v) => {
+                        this.plugin.settings.enableCheckpoints = v;
+                        await this.plugin.saveSettings();
+                    }),
+                );
 
-        new Setting(containerEl)
-            .setName(t('settings.vault.autoCleanup'))
-            .setDesc(t('settings.vault.autoCleanupDesc'))
-            .addToggle((t) =>
-                t.setValue(this.plugin.settings.checkpointAutoCleanup ?? true).onChange(async (v) => {
-                    this.plugin.settings.checkpointAutoCleanup = v;
+            const timeoutSetting = new Setting(containerEl)
+                .setName(t('settings.vault.snapshotTimeout'))
+                .setDesc(t('settings.vault.snapshotTimeoutDesc'));
+            addSliderInput(timeoutSetting, {
+                min: 5, max: 120, step: 5,
+                value: this.plugin.settings.checkpointTimeoutSeconds ?? 30,
+                onChange: async (v) => {
+                    this.plugin.settings.checkpointTimeoutSeconds = v;
                     await this.plugin.saveSettings();
-                }),
-            );
+                },
+            });
+
+            new Setting(containerEl)
+                .setName(t('settings.vault.autoCleanup'))
+                .setDesc(t('settings.vault.autoCleanupDesc'))
+                .addToggle((t) =>
+                    t.setValue(this.plugin.settings.checkpointAutoCleanup ?? true).onChange(async (v) => {
+                        this.plugin.settings.checkpointAutoCleanup = v;
+                        await this.plugin.saveSettings();
+                    }),
+                );
+        }
+        // @fork-mobile-end
 
         new Setting(containerEl)
             .setName(t('settings.vault.respectObsidianExcluded'))

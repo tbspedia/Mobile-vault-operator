@@ -10,6 +10,7 @@
  * ADR-137: Domain-aware layered access. Direkter Zugriff auf die vectors-Tabelle ist nur über diesen Store erlaubt; Aufrufer wählen die Domäne (siehe KNOWLEDGE_DOMAINS in knowledgeDomains.ts), nicht die Tabelle.
  */
 
+import { Platform } from 'obsidian';
 import type { KnowledgeDB, SqlJsDatabase } from './KnowledgeDB';
 import { KNOWLEDGE_DOMAINS, type KnowledgeDomain, pathPrefixToDomain } from './knowledgeDomains';
 
@@ -450,7 +451,11 @@ export class VectorStore {
     }
 
     // M-3: Maximum cache size to prevent OOM on very large vaults
-    private static readonly MAX_CACHE_VECTORS = 200_000;
+    // @fork-mobile-start [Phase: 2, Issue: MobileVectorCacheCap]
+    private static get MAX_CACHE_VECTORS(): number {
+        return Platform.isDesktopApp ? 200_000 : 25_000;
+    }
+    // @fork-mobile-end
 
     private ensureCache(): CachedVector[] {
         if (this.vectorCache) return this.vectorCache;

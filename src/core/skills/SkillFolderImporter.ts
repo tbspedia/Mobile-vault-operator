@@ -14,9 +14,35 @@ import type { DataAdapter } from 'obsidian';
 import { normalizePath } from 'obsidian';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- Node fs only reachable via dynamic require inside Electron renderer
-const fs: typeof import('fs/promises') = require('fs/promises');
+// @fork-mobile-start [Phase: 1, Issue: LazyFsSkillFolderImporter]
+let fsPromisesInstance: typeof import('fs/promises') | null = null;
+function getFsPromises(): typeof import('fs/promises') {
+    if (!fsPromisesInstance) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        fsPromisesInstance = require('fs/promises') as typeof import('fs/promises');
+    }
+    return fsPromisesInstance;
+}
+const fs = new Proxy({} as typeof import('fs/promises'), {
+    get(_target, prop) {
+        return (getFsPromises() as unknown as Record<string | symbol, unknown>)[prop];
+    },
+});
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- Node path only reachable via dynamic require inside Electron renderer
-const nodePath: typeof import('path') = require('path');
+let nodePathInstance: typeof import('path') | null = null;
+function getNodePath(): typeof import('path') {
+    if (!nodePathInstance) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        nodePathInstance = require('path') as typeof import('path');
+    }
+    return nodePathInstance;
+}
+const nodePath = new Proxy({} as typeof import('path'), {
+    get(_target, prop) {
+        return (getNodePath() as unknown as Record<string | symbol, unknown>)[prop];
+    },
+});
+// @fork-mobile-end
 
 export interface SkillFolderImportInput {
     adapter: DataAdapter;

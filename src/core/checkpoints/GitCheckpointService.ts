@@ -36,7 +36,21 @@ import * as path from 'path';
 // (2026-05-16). The repo also lives outside the vault now (2026-05-19), so
 // vault.adapter is no longer an option for repo-internal I/O.
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- see comment above
-const rawFs = require('fs') as typeof import('fs');
+// @fork-mobile-start [Phase: 1, Issue: LazyFsGitCheckpointService]
+let rawFsInstance: typeof import('fs') | null = null;
+function getFs(): typeof import('fs') {
+    if (!rawFsInstance) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        rawFsInstance = require('fs') as typeof import('fs');
+    }
+    return rawFsInstance;
+}
+const rawFs = new Proxy({} as typeof import('fs'), {
+    get(_target, prop) {
+        return (getFs() as unknown as Record<string | symbol, unknown>)[prop];
+    },
+});
+// @fork-mobile-end
 import { TFile, TFolder, type App, type Vault } from 'obsidian';
 import { refreshOpenMarkdownViewsFor } from '../utils/refreshMarkdownView';
 

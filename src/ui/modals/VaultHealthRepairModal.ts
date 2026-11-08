@@ -2200,6 +2200,12 @@ export class VaultHealthRepairModal extends Modal {
         contentEl.createEl('h3', { text: t('modal.vaultHealth.restoring') });
 
         try {
+            // @fork-mobile-start [Phase: 1, Issue: CheckpointServiceOptional]
+            if (!this.plugin.checkpointService) {
+                contentEl.createEl('p', { text: t('ui.checkpoint.error') });
+                return;
+            }
+            // @fork-mobile-end
             const result = await this.plugin.checkpointService.restore(checkpoint);
 
             contentEl.empty();

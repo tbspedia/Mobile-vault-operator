@@ -10,6 +10,7 @@
 import type ObsidianAgentPlugin from '../../main';
 import type { BaseTool } from './BaseTool';
 import type { ToolName, ToolDefinition } from './types';
+import { Platform } from 'obsidian';
 import { isDeferredTool } from './toolMetadata';
 
 // Import tools — vault: read
@@ -147,12 +148,14 @@ export class ToolRegistry {
             mcpClient, ringBuffer, skillLoader, sandboxExecutor, esbuildManager,
             dynamicToolLoader, sourceManager, pluginBuilder, pluginReloader,
         );
-        if (mcpClient) {
+        // @fork-mobile-start [Phase: 3, Issue: McpToolsDesktopOnly]
+        if (Platform.isDesktopApp && mcpClient) {
             this.register(new UseMcpToolTool(this.plugin, mcpClient));
             // FEAT-24-06 / ADR-118: on-demand companion to the truncated MCP
             // listing in the system prompt. NOT in DEFERRED_TOOL_NAMES.
             this.register(new ReadMcpToolTool(this.plugin, mcpClient));
         }
+        // @fork-mobile-end
         // Log here instead of inside registerInternalTools so the count
         // includes the two MCP companion tools registered above.
         console.debug(`ToolRegistry: Registered ${this.getToolCount()} tools`);
@@ -197,11 +200,15 @@ export class ToolRegistry {
         this.register(new MoveFileTool(this.plugin));
         // Vault: ZIP extraction (skill-translator + general bundle unpack)
         this.register(new ExtractZipTool(this.plugin));
-        // Vault: checkpoints (IMP-01-07-01) -- agent-facing browse + restore
-        this.register(new ListCheckpointsTool(this.plugin));
-        this.register(new ReadCheckpointTool(this.plugin));
-        this.register(new DiffCheckpointTool(this.plugin));
-        this.register(new RestoreCheckpointTool(this.plugin));
+        // @fork-mobile-start [Phase: 3, Issue: CheckpointToolsDesktopOnly]
+        if (Platform.isDesktopApp) {
+            // Vault: checkpoints (IMP-01-07-01) -- agent-facing browse + restore
+            this.register(new ListCheckpointsTool(this.plugin));
+            this.register(new ReadCheckpointTool(this.plugin));
+            this.register(new DiffCheckpointTool(this.plugin));
+            this.register(new RestoreCheckpointTool(this.plugin));
+        }
+        // @fork-mobile-end
         // Vault: intelligence (Phase 1.2)
         this.register(new GetFrontmatterTool(this.plugin));
         this.register(new UpdateFrontmatterTool(this.plugin));
@@ -273,7 +280,11 @@ export class ToolRegistry {
         this.register(new ProbePluginTool(this.plugin));
         // Plugin API + Recipe Shell (PAS-1.5)
         this.register(new CallPluginApiTool(this.plugin));
-        this.register(new ExecuteRecipeTool(this.plugin));
+        // @fork-mobile-start [Phase: 3, Issue: ExecuteRecipeDesktopOnly]
+        if (Platform.isDesktopApp) {
+            this.register(new ExecuteRecipeTool(this.plugin));
+        }
+        // @fork-mobile-end
         // Settings & Model configuration (Onboarding)
         this.register(new UpdateSettingsTool(this.plugin));
         this.register(new ConfigureModelTool(this.plugin));
@@ -281,32 +292,31 @@ export class ToolRegistry {
         if (ringBuffer) {
             this.register(new ReadAgentLogsTool(this.plugin, ringBuffer));
         }
-        if (mcpClient) {
+        // @fork-mobile-start [Phase: 3, Issue: DesktopOnlyTools]
+        if (Platform.isDesktopApp && mcpClient) {
             this.register(new ManageMcpServerTool(this.plugin, mcpClient));
         }
         // FEAT-29-05: ManageSkillTool removed. Skill authoring now flows
         // through the skill-creator builtin skill plus the standard file
         // tools (write_file, read_file) and run_skill_script for helpers.
-        // FEAT-29-06: generic skill-script executor (replaces code_modules
-        // / custom_*-tool registration pattern). Gated on sandbox + esbuild
-        // availability so headless or mobile builds without those
-        // components still load.
-        if (sandboxExecutor && esbuildManager) {
+        // FEAT-29-06: generic skill-script executor.
+        if (Platform.isDesktopApp && sandboxExecutor && esbuildManager) {
             this.register(new RunSkillScriptTool(this.plugin));
         }
-        // FEAT-29-10: composability tools. Always registered; runtime
-        // gates (spawnSubtask available, mcpClient configured,
-        // compositionStack present) are enforced inside the tools.
+        // FEAT-29-10: composability tools.
         this.register(new InvokeSkillTool(this.plugin));
-        this.register(new InvokeMcpServerTool(this.plugin));
+        if (Platform.isDesktopApp) {
+            this.register(new InvokeMcpServerTool(this.plugin));
+        }
         // Self-Development (Phase 3: expression evaluation)
-        if (sandboxExecutor && esbuildManager) {
+        if (Platform.isDesktopApp && sandboxExecutor && esbuildManager) {
             this.register(new EvaluateExpressionTool(this.plugin, sandboxExecutor, esbuildManager));
         }
         // Self-Development (Phase 4)
-        if (sourceManager && pluginBuilder && pluginReloader) {
+        if (Platform.isDesktopApp && sourceManager && pluginBuilder && pluginReloader) {
             this.register(new ManageSourceTool(this.plugin, sourceManager, pluginBuilder, pluginReloader));
         }
+        // @fork-mobile-end
     }
 
     /**
