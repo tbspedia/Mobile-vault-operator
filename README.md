@@ -1,6 +1,6 @@
 **English** | [中文 (Simplified)](#vault-operator-中文)
 
-# Vault Operator
+# Tbpedia Mobile Vault Operator
 
 **Agentic AI operating layer for your vault.**
 
