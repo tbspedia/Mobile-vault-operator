@@ -4,7 +4,9 @@
  * tokens while access tokens stay in memory. FEAT-04-14, ADR-89.
  */
 import { Platform, requestUrl } from 'obsidian';
-import { setTimeout, clearTimeout } from 'node:timers';
+// @fork-mobile-start [Phase: 4, Issue: Remove node:timers import for mobile webview compatibility]
+// setTimeout and clearTimeout are global functions
+// @fork-mobile-end
 import type { ProviderConfig } from '../../types/settings';
 import { SafeStorageService } from '../security/SafeStorageService';
 import { startPkceLoopbackServer } from './PkceLoopbackServer';

@@ -3,7 +3,9 @@
  * API-key/OpenAI compatibility path is independent. Fixed origins prevent
  * OAuth credentials being forwarded to a custom endpoint. FEAT-04-14.
  */
-import { setTimeout, clearTimeout } from 'node:timers';
+// @fork-mobile-start [Phase: 4, Issue: Remove node:timers import for mobile webview compatibility]
+// setTimeout and clearTimeout are global functions
+// @fork-mobile-end
 import type { CustomModel, LLMProvider } from '../../types/settings';
 import type { ApiHandler, ApiStream, MessageParam, ModelInfo, ProviderState } from '../types';
 import type { ToolDefinition } from '../../core/tools/types';

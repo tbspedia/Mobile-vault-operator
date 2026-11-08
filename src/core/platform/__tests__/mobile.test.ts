@@ -62,3 +62,70 @@ describe('Pure-JS SHA-256 Fallback', () => {
         expect(typeof hash).toBe('string');
     });
 });
+
+describe('Mobile Bundle Evaluation Simulation', () => {
+    it('evaluates main.js without missing Node module exceptions', async () => {
+        const fs = await import('fs');
+        const vm = await import('vm');
+        if (!fs.existsSync('main.js')) return;
+        const code = fs.readFileSync('main.js', 'utf8');
+
+        const mockObsidian = new Proxy({
+            Plugin: class { constructor() {} },
+            Platform: { isDesktopApp: false, isMobile: true, isIos: false, isAndroidApp: true },
+            normalizePath: (p: string) => (p || '').replace(/\\/g, '/'),
+            Notice: class {},
+            requestUrl: async () => ({ status: 200, json: async () => ({}) })
+        }, {
+            get(target, prop) {
+                if (prop in target) return (target as Record<string, unknown>)[prop as string];
+                return class {};
+            }
+        });
+
+        const moduleObj = { exports: {} as Record<string, unknown> };
+        const sandbox: Record<string, unknown> = {
+            window: {},
+            document: {
+                createElement: () => ({ addEventListener: () => {}, setAttribute: () => {}, style: {} }),
+                body: { appendChild: () => {}, createEl: () => ({}) }
+            },
+            module: moduleObj,
+            exports: moduleObj.exports,
+            navigator: { userAgent: 'Android' },
+            console,
+            setTimeout,
+            clearTimeout,
+            setInterval,
+            clearInterval,
+            TextEncoder,
+            TextDecoder,
+            ReadableStream,
+            WritableStream,
+            TransformStream,
+            Headers,
+            Request,
+            Response,
+            fetch,
+            atob: (s: string) => Buffer.from(s, 'base64').toString('binary'),
+            btoa: (s: string) => Buffer.from(s, 'binary').toString('base64'),
+            require: (id: string) => {
+                if (id === 'obsidian') return mockObsidian;
+                if (id.startsWith('@codemirror/') || id.startsWith('@lezer/')) return new Proxy({}, { get: () => class {} });
+                throw new Error(`Cannot find module '${id}' (simulated mobile WebView)`);
+            }
+        };
+        sandbox.window = sandbox;
+        sandbox.global = sandbox;
+        sandbox.globalThis = sandbox;
+
+        expect(() => {
+            const script = new vm.Script(code, { filename: 'main.js' });
+            const context = vm.createContext(sandbox);
+            script.runInContext(context);
+        }).not.toThrow();
+
+        expect(typeof moduleObj.exports).toBe('object');
+    });
+});
+

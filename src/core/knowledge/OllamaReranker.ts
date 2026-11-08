@@ -5,7 +5,9 @@
  * https://docs.ollama.com/api/generate. This is not an /api/rerank endpoint.
  * Extension: keep transport bounds and whole-round failure semantics intact.
  */
-import { setTimeout, clearTimeout } from 'node:timers';
+// @fork-mobile-start [Phase: 4, Issue: Remove node:timers import for mobile webview compatibility]
+// setTimeout and clearTimeout are global functions
+// @fork-mobile-end
 import { createNodeFetch } from '../../api/providers/openai';
 import { validateProviderUrl } from '../../api/providers/providerUrlGuard';
 import type { RerankCandidate, RerankResult } from './RerankerService';
