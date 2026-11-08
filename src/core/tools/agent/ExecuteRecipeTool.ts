@@ -25,7 +25,9 @@ import { buildSubprocessEnv } from '../../subprocess/buildSubprocessEnv';
 
 /** Resolve binary to absolute path via 'which' (macOS/Linux) or 'where' (Windows) */
 async function resolveBinary(name: string): Promise<string | null> {
-    const cmd = process.platform === 'win32' ? 'where' : 'which';
+    // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+    const cmd = (typeof process !== 'undefined' && process.platform === 'win32') ? 'where' : 'which';
+    // @fork-mobile-end
 
     return new Promise((resolve) => {
         const child = spawnAllowed(cmd, [name], {

@@ -35,7 +35,9 @@ let cachedResult: LibreOfficeStatus | null = null;
 
 /** Resolve binary to absolute path via 'which' (macOS/Linux) or 'where' (Windows) */
 function resolveBinary(name: string): Promise<string | null> {
-    const cmd = process.platform === 'win32' ? 'where' : 'which';
+    // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+    const cmd = (typeof process !== 'undefined' && process.platform === 'win32') ? 'where' : 'which';
+    // @fork-mobile-end
     return new Promise((resolve) => {
         const child = spawnAllowed(cmd, [name], {
             timeout: 5_000,
@@ -90,7 +92,10 @@ export async function detectLibreOffice(
     }
 
     // 2. Check known platform paths
-    const platformPaths = KNOWN_PATHS[process.platform] ?? [];
+    // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+    const platform = typeof process !== 'undefined' ? process.platform : 'android';
+    const platformPaths = KNOWN_PATHS[platform] ?? [];
+    // @fork-mobile-end
     for (const knownPath of platformPaths) {
         const valid = await checkPath(knownPath);
         if (valid) {

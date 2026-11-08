@@ -129,7 +129,9 @@ export const BUILT_IN_RECIPES: Recipe[] = [
         id: 'check-dependency',
         name: 'Check Dependency',
         description: 'Check if an external program is installed on the system',
-        binary: process.platform === 'win32' ? 'where' : 'which',
+        // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+        binary: (typeof process !== 'undefined' && process.platform === 'win32') ? 'where' : 'which',
+        // @fork-mobile-end
         argsTemplate: ['{{program}}'],
         parameters: [
             {

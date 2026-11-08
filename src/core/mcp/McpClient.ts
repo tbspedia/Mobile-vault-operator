@@ -463,7 +463,9 @@ export class McpClient {
         // /usr/local, nvm), deduped, so the spawn resolves the binary.
         // Non-macOS/Windows keep their own dirs; missing ones are harmless
         // noise in PATH.
-        if (process.platform !== 'win32') {
+        // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+        if (typeof process !== 'undefined' && process.platform !== 'win32') {
+        // @fork-mobile-end
             const home = parentEnv.HOME ?? '';
             const extra = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin',
                 ...(home ? [`${home}/.nvm/current/bin`, `${home}/.local/bin`] : [])];

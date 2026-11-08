@@ -634,7 +634,7 @@ export default class ObsidianAgentPlugin extends Plugin {
         const nodeOs = require('os') as typeof import('os');
         const safeFsVaultRoot = (this.app.vault.adapter as unknown as { getBasePath?(): string }).getBasePath?.() ?? '';
             homeDir = nodeOs.homedir();
-        const appData = process.env.APPDATA ?? '';
+        const appData = (typeof process !== 'undefined' ? process.env.APPDATA : undefined) ?? '';
         const desktopConfigDirs = [
             nodePath.join(homeDir, '.config', 'Claude'),
             nodePath.join(homeDir, 'Library', 'Application Support', 'Claude'),

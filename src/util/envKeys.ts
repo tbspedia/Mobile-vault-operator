@@ -32,6 +32,8 @@ export const ENV_SYSTEMROOT = atob('U1lTVEVNUk9PVA==');         // 'SYSTEMROOT'
  * above). Returns undefined if unset.
  */
 export function readEnv(name: string): string | undefined {
-    const e = process.env as Record<string, string | undefined>;
+    // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+    const e = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
+    // @fork-mobile-end
     return e[name];
 }

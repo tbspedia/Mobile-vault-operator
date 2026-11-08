@@ -22,7 +22,9 @@
 
 export function buildSubprocessEnv(): NodeJS.ProcessEnv {
     return {
-        ...process.env,
+        // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+        ...(typeof process !== 'undefined' ? process.env : {}),
+        // @fork-mobile-end
         LANG: 'en_US.UTF-8',
     };
 }

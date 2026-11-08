@@ -165,7 +165,9 @@ export class WriterLock {
 
     private async writeLock(): Promise<void> {
         const info: LockHolderInfo = {
-            pid: process.pid,
+            // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+            pid: (typeof process !== 'undefined' && process.pid) ? process.pid : 1,
+            // @fork-mobile-end
             writerId: this.writerId,
             startedAt: Date.now(),
         };
@@ -179,6 +181,9 @@ export class WriterLock {
      */
     private isAlive(pid: number): boolean {
         try {
+            // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+            if (typeof process === 'undefined' || typeof process.kill !== 'function') return false;
+            // @fork-mobile-end
             process.kill(pid, 0);
             return true;
         } catch (e) {

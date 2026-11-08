@@ -173,7 +173,9 @@ export class McpBridge {
         // Check if cloudflared is available. All child_process access goes through
         // spawnAllowlist (FEAT-28-02), which enforces shell: false and rejects
         // any binary outside the seven-entry allowlist.
-        const which = process.platform === 'win32' ? 'where' : 'which';
+        // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+        const which = (typeof process !== 'undefined' && process.platform === 'win32') ? 'where' : 'which';
+        // @fork-mobile-end
         const probe = spawnAllowedSync(which, ['cloudflared'], { encoding: 'utf-8', timeout: 3000 });
         if (probe.status !== 0) {
             console.warn('[McpBridge] cloudflared not found. Install via: brew install cloudflared');

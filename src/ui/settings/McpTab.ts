@@ -1622,7 +1622,9 @@ export class McpTab {
     }
 
     private findNodePath(): string {
-        const which = process.platform === 'win32' ? 'where' : 'which';
+        // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+        const which = (typeof process !== 'undefined' && process.platform === 'win32') ? 'where' : 'which';
+        // @fork-mobile-end
         const candidates: string[] = [];
         try {
             const result = spawnAllowedSync(which, ['node'], { encoding: 'utf-8', timeout: 3000 });
@@ -1630,7 +1632,9 @@ export class McpTab {
                 candidates.push(String(result.stdout).trim().split('\n')[0].trim());
             }
         } catch { /* fallback */ }
-        if (process.platform === 'win32') {
+        // @fork-mobile-start [Phase: 4, Issue: SafeProcessPlatformAccess]
+        if (typeof process !== 'undefined' && process.platform === 'win32') {
+        // @fork-mobile-end
             candidates.push('C:\\Program Files\\nodejs\\node.exe');
             candidates.push(`${readEnv(ENV_APPDATA) ?? ''}\\nvm\\current\\node.exe`);
         } else {
